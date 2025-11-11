@@ -5,7 +5,7 @@ st.set_page_config(page_title="Divisão do Churrasco 🥩", page_icon="🥩")
 
 st.title("🥩 Divisão do Churrasco - estilo Splitwise")
 
-# Inicializa sessão
+# ---------- INICIALIZAÇÃO ----------
 if "participantes" not in st.session_state:
     st.session_state.participantes = []
 if "despesas" not in st.session_state:
@@ -13,9 +13,9 @@ if "despesas" not in st.session_state:
 if "novo_nome" not in st.session_state:
     st.session_state.novo_nome = ""
 
-# Função auxiliar para adicionar participante
+# ---------- FUNÇÕES ----------
 def adicionar_participante():
-    nome = st.session_state.novo_nome.strip()
+    nome = st.session_state.novo_nome.strip().capitalize()  # Primeira letra maiúscula
     if nome and nome not in st.session_state.participantes:
         st.session_state.participantes.append(nome)
         st.session_state.novo_nome = ""  # limpa campo
@@ -25,10 +25,15 @@ def adicionar_participante():
     else:
         st.warning("Digite um nome válido.")
 
+def converter_valor(valor_str):
+    try:
+        return float(valor_str.replace(",", "."))
+    except:
+        return 0.0
+
 # ---------- PARTICIPANTES ----------
 st.header("1️⃣ Participantes")
 
-# Campo com detecção de Tab/Enter
 st.text_input(
     "Digite o nome e pressione TAB ou ENTER para adicionar:",
     key="novo_nome",
@@ -45,53 +50,40 @@ st.header("2️⃣ Despesas")
 if not st.session_state.participantes:
     st.info("Adicione os participantes primeiro.")
 else:
-    col1, col2 = st.columns(2)
-    with col1:
-        pagador = st.selectbox("Quem pagou?", st.session_state.participantes)
-    with col2:
-        valor_str = st.text_input("Valor (R$) — use vírgula:", placeholder="Ex: 120,50")
+    st.write("Digite o quanto cada pessoa gastou nessa rodada:")
 
-    envolvidos = st.multiselect("Quem participou dessa despesa?", st.session_state.participantes)
+    valores_gastos = {}
+    cols = st.columns(2)
+    for i, nome in enumerate(st.session_state.participantes):
+        with cols[i % 2]:
+            valores_gastos[nome] = st.text_input(
+                f"{nome} (R$):",
+                key=f"gasto_{nome}",
+                placeholder="Ex: 25,50",
+            )
 
     if st.button("Adicionar despesa"):
-        # converte valor
-        try:
-            valor = float(valor_str.replace(",", "."))
-        except ValueError:
-            st.error("Digite um valor válido (use vírgula ou ponto).")
-            valor = 0
+        # Processar os valores
+        despesa_atual = {}
+        total = 0
+        for nome, valor_str in valores_gastos.items():
+            valor = converter_valor(valor_str)
+            if valor > 0:
+                despesa_atual[nome] = valor
+                total += valor
 
-        if valor <= 0:
-            st.error("Valor deve ser maior que zero.")
-        elif not envolvidos:
-            st.error("Selecione pelo menos um participante.")
+        if total == 0:
+            st.error("Adicione pelo menos um valor válido.")
         else:
-            st.session_state.despesas.append(
-                {"pagador": pagador, "valor": valor, "participantes": envolvidos}
-            )
-            st.success(f"{pagador} pagou R${valor:.2f} por {', '.join(envolvidos)}")
+            st.session_state.despesas.append(despesa_atual)
+            st.success("Despesa adicionada com sucesso ✅")
 
 # ---------- LISTA DE DESPESAS ----------
 if st.session_state.despesas:
     st.subheader("💸 Despesas registradas")
     for i, d in enumerate(st.session_state.despesas):
-        st.text(f"{i+1}. {d['pagador']} pagou R${d['valor']:.2f} por {', '.join(d['participantes'])}")
-
-    # Edição de despesa
-    indice_editar = st.number_input("Editar número da despesa (0 para nenhuma):", min_value=0, max_value=len(st.session_state.despesas))
-    if indice_editar > 0:
-        d = st.session_state.despesas[indice_editar - 1]
-        st.write("### ✏️ Editar despesa")
-        novo_pagador = st.selectbox("Novo pagador:", st.session_state.participantes, index=st.session_state.participantes.index(d["pagador"]))
-        novo_valor_str = st.text_input("Novo valor (R$):", value=str(d["valor"]).replace(".", ","))  # mostra com vírgula
-        novos_env = st.multiselect("Novos participantes:", st.session_state.participantes, default=d["participantes"])
-        if st.button("Salvar alterações"):
-            try:
-                novo_valor = float(novo_valor_str.replace(",", "."))
-                d["pagador"], d["valor"], d["participantes"] = novo_pagador, novo_valor, novos_env
-                st.success("Despesa atualizada com sucesso ✅")
-            except ValueError:
-                st.error("Digite um valor numérico válido (use vírgula ou ponto).")
+        detalhes = ", ".join([f"{p}: R${v:.2f}" for p, v in d.items()])
+        st.text(f"{i+1}. {detalhes}")
 
 # ---------- RESULTADO ----------
 st.header("3️⃣ Resultado final 💰")
@@ -104,24 +96,28 @@ if st.button("Calcular resultado"):
     deve_gastar = {p: 0 for p in participantes}
     saldos = {p: 0 for p in participantes}
 
+    # Somatório de quanto cada um pagou
     for despesa in despesas:
-        valor = despesa["valor"]
-        pagador = despesa["pagador"]
-        envolvidos = despesa["participantes"]
-        valor_por_pessoa = valor / len(envolvidos)
+        total_despesa = sum(despesa.values())
+        envolvidos = list(despesa.keys())
+        valor_por_pessoa = total_despesa / len(participantes)
 
-        pagos[pagador] += valor
-        for pessoa in envolvidos:
-            deve_gastar[pessoa] += valor_por_pessoa
+        for p in participantes:
+            deve_gastar[p] += valor_por_pessoa
+        for pagador, valor in despesa.items():
+            pagos[pagador] += valor
 
     for p in participantes:
         saldos[p] = pagos[p] - deve_gastar[p]
 
+    # ---------- RESULTADO INDIVIDUAL ----------
     st.subheader("📊 Resumo individual")
     for p in participantes:
-        st.write(f"- {p} pagou R${pagos[p]:.2f}, deveria gastar R${deve_gastar[p]:.2f} → saldo {saldos[p]:+.2f}")
+        st.write(
+            f"- {p}: pagou R${pagos[p]:.2f}, deveria gastar R${deve_gastar[p]:.2f} → saldo {saldos[p]:+.2f}"
+        )
 
-    # Cálculo das transferências
+    # ---------- TRANSFERÊNCIAS ----------
     credores = [(p, v) for p, v in saldos.items() if v > 0]
     devedores = [(p, -v) for p, v in saldos.items() if v < 0]
     resultado = []
