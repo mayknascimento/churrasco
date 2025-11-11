@@ -12,6 +12,8 @@ if "despesas" not in st.session_state:
     st.session_state.despesas = []
 if "novo_nome" not in st.session_state:
     st.session_state.novo_nome = ""
+if "selecionar_todos" not in st.session_state:
+    st.session_state.selecionar_todos = False
 
 # ---------- FUNÇÕES ----------
 def adicionar_participante():
@@ -50,48 +52,49 @@ st.header("2️⃣ Despesas")
 if not st.session_state.participantes:
     st.info("Adicione os participantes primeiro.")
 else:
-    st.write("Selecione quem participou dessa despesa e quanto cada um gastou:")
+    st.subheader("➕ Adicionar uma nova despesa")
 
-    participantes_env = st.multiselect(
-        "Quem participou do gasto?",
-        st.session_state.participantes,
-        default=st.session_state.participantes,
-    )
+    col1, col2 = st.columns(2)
+    with col1:
+        pagador = st.selectbox("Quem pagou?", st.session_state.participantes)
+    with col2:
+        valor_str = st.text_input("Valor pago (R$) — use vírgula:", placeholder="Ex: 50,00")
 
-    valores_gastos = {}
-    cols = st.columns(2)
-    for i, nome in enumerate(participantes_env):
-        with cols[i % 2]:
-            valores_gastos[nome] = st.text_input(
-                f"{nome} (R$):",
-                key=f"gasto_{nome}_{len(st.session_state.despesas)}",
-                placeholder="Ex: 25,50",
-            )
+    # Botão para selecionar todos
+    st.write("Selecione quem participou desse gasto:")
+    if st.button("Selecionar todos"):
+        st.session_state.selecionar_todos = True
+    if st.button("Limpar seleção"):
+        st.session_state.selecionar_todos = False
+
+    if st.session_state.selecionar_todos:
+        envolvidos = st.multiselect(
+            "Quem participou?", st.session_state.participantes, default=st.session_state.participantes, key=f"envolvidos_{len(st.session_state.despesas)}"
+        )
+    else:
+        envolvidos = st.multiselect(
+            "Quem participou?", st.session_state.participantes, key=f"envolvidos_{len(st.session_state.despesas)}"
+        )
 
     if st.button("Adicionar despesa"):
-        despesa_atual = {}
-        total = 0
-        for nome in participantes_env:
-            valor = converter_valor(valores_gastos.get(nome, "0"))
-            if valor > 0:
-                despesa_atual[nome] = valor
-                total += valor
-
-        if not participantes_env:
-            st.error("Selecione ao menos uma pessoa.")
-        elif total == 0:
-            st.error("Adicione pelo menos um valor válido.")
+        valor = converter_valor(valor_str)
+        if valor <= 0:
+            st.error("Digite um valor válido.")
+        elif not envolvidos:
+            st.error("Selecione quem participou do gasto.")
         else:
-            st.session_state.despesas.append({"envolvidos": participantes_env, "valores": despesa_atual})
-            st.success(f"Despesa adicionada com sucesso! (Total R${total:.2f})")
+            st.session_state.despesas.append({
+                "pagador": pagador,
+                "valor": valor,
+                "envolvidos": envolvidos
+            })
+            st.success(f"{pagador} pagou R${valor:.2f} por {', '.join(envolvidos)}")
 
 # ---------- LISTA DE DESPESAS ----------
 if st.session_state.despesas:
     st.subheader("💸 Despesas registradas")
     for i, d in enumerate(st.session_state.despesas):
-        env = ", ".join(d["envolvidos"])
-        detalhes = ", ".join([f"{p}: R${v:.2f}" for p, v in d["valores"].items()])
-        st.text(f"{i+1}. [{env}] → {detalhes}")
+        st.text(f"{i+1}. {d['pagador']} pagou R${d['valor']:.2f} por {', '.join(d['envolvidos'])}")
 
 # ---------- RESULTADO ----------
 st.header("3️⃣ Resultado final 💰")
@@ -105,29 +108,21 @@ if st.button("Calcular resultado"):
     saldos = {p: 0 for p in participantes}
 
     for despesa in despesas:
+        valor = despesa["valor"]
+        pagador = despesa["pagador"]
         envolvidos = despesa["envolvidos"]
-        valores = despesa["valores"]
-        total_despesa = sum(valores.values())
+        valor_por_pessoa = valor / len(envolvidos)
 
-        if not envolvidos:
-            continue
-
-        valor_por_pessoa = total_despesa / len(envolvidos)
-
-        for pagador, valor in valores.items():
-            pagos[pagador] += valor
-        for p in envolvidos:
-            deve_gastar[p] += valor_por_pessoa
+        pagos[pagador] += valor
+        for pessoa in envolvidos:
+            deve_gastar[pessoa] += valor_por_pessoa
 
     for p in participantes:
         saldos[p] = pagos[p] - deve_gastar[p]
 
-    # ---------- RESULTADO INDIVIDUAL ----------
     st.subheader("📊 Resumo individual")
     for p in participantes:
-        st.write(
-            f"- {p}: pagou R${pagos[p]:.2f}, deveria gastar R${deve_gastar[p]:.2f} → saldo {saldos[p]:+.2f}"
-        )
+        st.write(f"- {p}: pagou R${pagos[p]:.2f}, deveria gastar R${deve_gastar[p]:.2f} → saldo {saldos[p]:+.2f}")
 
     # ---------- TRANSFERÊNCIAS ----------
     credores = [(p, v) for p, v in saldos.items() if v > 0]
