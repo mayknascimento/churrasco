@@ -1,171 +1,78 @@
-import tkinter as tk
-from tkinter import ttk, messagebox
+import streamlit as st
+import pandas as pd
 
-class SplitwiseApp:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Divisão do Churrasco 🥩")
-        self.root.geometry("600x500")
+st.set_page_config(page_title="Divisão do Churrasco 🥩", page_icon="🥩")
 
-        self.participantes = []
-        self.despesas = []
+st.title("🥩 Divisão do Churrasco - estilo Splitwise")
 
-        self.frame_principal = ttk.Frame(self.root, padding=10)
-        self.frame_principal.pack(fill="both", expand=True)
+# Inicializa sessão
+if "participantes" not in st.session_state:
+    st.session_state.participantes = []
+if "despesas" not in st.session_state:
+    st.session_state.despesas = []
 
-        self.montar_tela_participantes()
+st.header("1️⃣ Participantes")
+novo_nome = st.text_input("Adicionar participante:")
+if st.button("Adicionar"):
+    nome = novo_nome.strip()
+    if nome and nome not in st.session_state.participantes:
+        st.session_state.participantes.append(nome)
+        st.success(f"{nome} adicionado!")
+    elif nome in st.session_state.participantes:
+        st.warning("Esse nome já foi adicionado.")
+    novo_nome = ""
 
-    def montar_tela_participantes(self):
-        for widget in self.frame_principal.winfo_children():
-            widget.destroy()
+st.write("**Participantes:**", ", ".join(st.session_state.participantes))
 
-        ttk.Label(self.frame_principal, text="Adicione os participantes:", font=("Arial", 12, "bold")).pack(pady=5)
+st.header("2️⃣ Despesas")
+if not st.session_state.participantes:
+    st.info("Adicione os participantes primeiro.")
+else:
+    col1, col2 = st.columns(2)
+    with col1:
+        pagador = st.selectbox("Quem pagou?", st.session_state.participantes)
+    with col2:
+        valor = st.number_input("Valor (R$)", min_value=0.0, format="%.2f")
 
-        self.entry_nome = ttk.Entry(self.frame_principal, width=30)
-        self.entry_nome.pack(pady=5)
-        ttk.Button(self.frame_principal, text="Adicionar participante", command=self.adicionar_participante).pack(pady=5)
+    envolvidos = st.multiselect("Quem participou dessa despesa?", st.session_state.participantes)
 
-        self.lista_participantes = tk.Listbox(self.frame_principal, height=8)
-        self.lista_participantes.pack(fill="x", pady=5)
-
-        ttk.Button(self.frame_principal, text="Próximo ➡️", command=self.montar_tela_despesas).pack(pady=10)
-
-    def adicionar_participante(self):
-        nome = self.entry_nome.get().strip()
-        if nome and nome not in self.participantes:
-            self.participantes.append(nome)
-            self.lista_participantes.insert(tk.END, nome)
-            self.entry_nome.delete(0, tk.END)
+    if st.button("Adicionar despesa"):
+        if valor <= 0:
+            st.error("Valor deve ser maior que zero.")
+        elif not envolvidos:
+            st.error("Selecione pelo menos um participante.")
         else:
-            messagebox.showwarning("Atenção", "Nome vazio ou duplicado.")
+            st.session_state.despesas.append({"pagador": pagador, "valor": valor, "participantes": envolvidos})
+            st.success(f"{pagador} pagou R${valor:.2f} por {', '.join(envolvidos)}")
 
-    def montar_tela_despesas(self):
-        if not self.participantes:
-            messagebox.showerror("Erro", "Adicione pelo menos um participante.")
-            return
+if st.session_state.despesas:
+    st.subheader("💸 Despesas registradas")
+    for i, d in enumerate(st.session_state.despesas):
+        st.text(f"{i+1}. {d['pagador']} pagou R${d['valor']:.2f} por {', '.join(d['participantes'])}")
 
-        for widget in self.frame_principal.winfo_children():
-            widget.destroy()
+    # Permitir edição
+    indice_editar = st.number_input("Editar número da despesa (0 para nenhuma):", min_value=0, max_value=len(st.session_state.despesas))
+    if indice_editar > 0:
+        d = st.session_state.despesas[indice_editar - 1]
+        st.write("### ✏️ Editar despesa")
+        novo_pagador = st.selectbox("Novo pagador:", st.session_state.participantes, index=st.session_state.participantes.index(d["pagador"]))
+        novo_valor = st.number_input("Novo valor (R$):", min_value=0.0, format="%.2f", value=d["valor"])
+        novos_env = st.multiselect("Novos participantes:", st.session_state.participantes, default=d["participantes"])
+        if st.button("Salvar alterações"):
+            d["pagador"], d["valor"], d["participantes"] = novo_pagador, novo_valor, novos_env
+            st.success("Despesa atualizada com sucesso ✅")
 
-        ttk.Label(self.frame_principal, text="Registrar despesas:", font=("Arial", 12, "bold")).pack(pady=5)
+    st.header("3️⃣ Resultado final 💰")
 
-        self.pagador_var = tk.StringVar()
-        ttk.Label(self.frame_principal, text="Quem pagou:").pack()
-        self.pagador_menu = ttk.Combobox(self.frame_principal, textvariable=self.pagador_var, values=self.participantes, state="readonly")
-        self.pagador_menu.pack(pady=5)
+    if st.button("Calcular resultado"):
+        participantes = st.session_state.participantes
+        despesas = st.session_state.despesas
 
-        ttk.Label(self.frame_principal, text="Valor pago (R$):").pack()
-        self.valor_entry = ttk.Entry(self.frame_principal, width=20)
-        self.valor_entry.pack(pady=5)
+        pagos = {p: 0 for p in participantes}
+        deve_gastar = {p: 0 for p in participantes}
+        saldos = {p: 0 for p in participantes}
 
-        ttk.Label(self.frame_principal, text="Quem participou dessa despesa:").pack()
-        self.participantes_vars = {}
-        for nome in self.participantes:
-            var = tk.BooleanVar()
-            chk = ttk.Checkbutton(self.frame_principal, text=nome, variable=var)
-            chk.pack(anchor="w")
-            self.participantes_vars[nome] = var
-
-        ttk.Button(self.frame_principal, text="Adicionar despesa", command=self.adicionar_despesa).pack(pady=5)
-        ttk.Button(self.frame_principal, text="Ver resultado final 💰", command=self.calcular_resultado).pack(pady=5)
-
-        ttk.Label(self.frame_principal, text="Duplo clique para editar uma despesa").pack()
-        self.lista_despesas = tk.Listbox(self.frame_principal, height=8)
-        self.lista_despesas.pack(fill="x", pady=5)
-        self.lista_despesas.bind("<Double-Button-1>", self.editar_despesa)
-
-    def adicionar_despesa(self):
-        pagador = self.pagador_var.get()
-        valor = self.valor_entry.get()
-        try:
-            valor = float(valor)
-        except ValueError:
-            messagebox.showerror("Erro", "Valor inválido.")
-            return
-
-        participantes_despesa = [p for p, v in self.participantes_vars.items() if v.get()]
-        if not participantes_despesa:
-            messagebox.showwarning("Aviso", "Selecione ao menos um participante.")
-            return
-
-        self.despesas.append({"pagador": pagador, "valor": valor, "participantes": participantes_despesa})
-        self.atualizar_lista_despesas()
-
-        self.valor_entry.delete(0, tk.END)
-        for var in self.participantes_vars.values():
-            var.set(False)
-
-    def atualizar_lista_despesas(self):
-        self.lista_despesas.delete(0, tk.END)
-        for i, d in enumerate(self.despesas):
-            texto = f"{i+1}. {d['pagador']} pagou R${d['valor']:.2f} por {', '.join(d['participantes'])}"
-            self.lista_despesas.insert(tk.END, texto)
-
-    def editar_despesa(self, event):
-        selecao = self.lista_despesas.curselection()
-        if not selecao:
-            return
-        index = selecao[0]
-        despesa = self.despesas[index]
-
-        janela_editar = tk.Toplevel(self.root)
-        janela_editar.title("Editar Despesa ✏️")
-        janela_editar.geometry("400x400")
-
-        ttk.Label(janela_editar, text=f"Editar despesa {index+1}", font=("Arial", 12, "bold")).pack(pady=10)
-
-        ttk.Label(janela_editar, text="Quem pagou:").pack()
-        pagador_var = tk.StringVar(value=despesa["pagador"])
-        pagador_menu = ttk.Combobox(janela_editar, textvariable=pagador_var, values=self.participantes, state="readonly")
-        pagador_menu.pack(pady=5)
-
-        ttk.Label(janela_editar, text="Valor pago (R$):").pack()
-        valor_entry = ttk.Entry(janela_editar, width=20)
-        valor_entry.insert(0, str(despesa["valor"]))
-        valor_entry.pack(pady=5)
-
-        ttk.Label(janela_editar, text="Quem participou:").pack()
-        participantes_vars_edit = {}
-        for nome in self.participantes:
-            var = tk.BooleanVar(value=nome in despesa["participantes"])
-            chk = ttk.Checkbutton(janela_editar, text=nome, variable=var)
-            chk.pack(anchor="w")
-            participantes_vars_edit[nome] = var
-
-        def salvar_edicao():
-            try:
-                valor = float(valor_entry.get())
-            except ValueError:
-                messagebox.showerror("Erro", "Valor inválido.")
-                return
-
-            novos_participantes = [p for p, v in participantes_vars_edit.items() if v.get()]
-            if not novos_participantes:
-                messagebox.showwarning("Aviso", "Selecione ao menos um participante.")
-                return
-
-            self.despesas[index] = {
-                "pagador": pagador_var.get(),
-                "valor": valor,
-                "participantes": novos_participantes
-            }
-            self.atualizar_lista_despesas()
-            janela_editar.destroy()
-
-        ttk.Button(janela_editar, text="Salvar alterações", command=salvar_edicao).pack(pady=10)
-        ttk.Button(janela_editar, text="Cancelar", command=janela_editar.destroy).pack()
-
-    def calcular_resultado(self):
-        if not self.despesas:
-            messagebox.showinfo("Aviso", "Nenhuma despesa registrada.")
-            return
-
-        # Inicializa saldos
-        pagos = {p: 0 for p in self.participantes}
-        deve_gastar = {p: 0 for p in self.participantes}
-        saldos = {p: 0 for p in self.participantes}
-
-        for despesa in self.despesas:
+        for despesa in despesas:
             valor = despesa["valor"]
             pagador = despesa["pagador"]
             envolvidos = despesa["participantes"]
@@ -175,13 +82,14 @@ class SplitwiseApp:
             for pessoa in envolvidos:
                 deve_gastar[pessoa] += valor_por_pessoa
 
-        for p in self.participantes:
+        for p in participantes:
             saldos[p] = pagos[p] - deve_gastar[p]
 
-        resultado = self.minimizar_transferencias(saldos)
-        self.mostrar_resultado(pagos, deve_gastar, saldos, resultado)
+        st.subheader("📊 Resumo individual")
+        for p in participantes:
+            st.write(f"- {p} pagou R${pagos[p]:.2f}, deveria gastar R${deve_gastar[p]:.2f} → saldo {saldos[p]:+.2f}")
 
-    def minimizar_transferencias(self, saldos):
+        # Cálculo das transferências
         credores = [(p, v) for p, v in saldos.items() if v > 0]
         devedores = [(p, -v) for p, v in saldos.items() if v < 0]
         resultado = []
@@ -191,39 +99,17 @@ class SplitwiseApp:
             devedor, deve = devedores[i]
             credor, tem = credores[j]
             valor = min(deve, tem)
-
             resultado.append(f"{devedor} deve pagar R${valor:.2f} para {credor}")
-
             devedores[i] = (devedor, deve - valor)
             credores[j] = (credor, tem - valor)
-
             if devedores[i][1] == 0:
                 i += 1
             if credores[j][1] == 0:
                 j += 1
 
-        return resultado
-
-    def mostrar_resultado(self, pagos, deve_gastar, saldos, resultado):
-        janela_resultado = tk.Toplevel(self.root)
-        janela_resultado.title("Resultado Final 💵")
-        janela_resultado.geometry("500x500")
-
-        ttk.Label(janela_resultado, text="Resumo individual:", font=("Arial", 12, "bold")).pack(pady=10)
-
-        for p in self.participantes:
-            texto = f"- {p} pagou R${pagos[p]:.2f}, deveria gastar R${deve_gastar[p]:.2f} → saldo {saldos[p]:+.2f}"
-            ttk.Label(janela_resultado, text=texto).pack(anchor="w", padx=20)
-
-        ttk.Separator(janela_resultado, orient="horizontal").pack(fill="x", pady=10)
-
-        ttk.Label(janela_resultado, text="Transferências necessárias:", font=("Arial", 12, "bold")).pack(pady=5)
-        for r in resultado:
-            ttk.Label(janela_resultado, text=r).pack(anchor="w", padx=20)
-
-        ttk.Button(janela_resultado, text="Fechar", command=janela_resultado.destroy).pack(pady=20)
-
-if __name__ == "__main__":
-    root = tk.Tk()
-    app = SplitwiseApp(root)
-    root.mainloop()
+        st.subheader("💵 Transferências necessárias")
+        if resultado:
+            for r in resultado:
+                st.write(r)
+        else:
+            st.success("Todos estão equilibrados! 🎉")
