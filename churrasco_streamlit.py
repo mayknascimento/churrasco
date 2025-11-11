@@ -15,10 +15,10 @@ if "novo_nome" not in st.session_state:
 
 # ---------- FUNÇÕES ----------
 def adicionar_participante():
-    nome = st.session_state.novo_nome.strip().capitalize()  # Primeira letra maiúscula
+    nome = st.session_state.novo_nome.strip().capitalize()
     if nome and nome not in st.session_state.participantes:
         st.session_state.participantes.append(nome)
-        st.session_state.novo_nome = ""  # limpa campo
+        st.session_state.novo_nome = ""
         st.success(f"{nome} adicionado!")
     elif nome in st.session_state.participantes:
         st.warning("Esse nome já foi adicionado.")
@@ -50,40 +50,48 @@ st.header("2️⃣ Despesas")
 if not st.session_state.participantes:
     st.info("Adicione os participantes primeiro.")
 else:
-    st.write("Digite o quanto cada pessoa gastou nessa rodada:")
+    st.write("Selecione quem participou dessa despesa e quanto cada um gastou:")
+
+    participantes_env = st.multiselect(
+        "Quem participou do gasto?",
+        st.session_state.participantes,
+        default=st.session_state.participantes,
+    )
 
     valores_gastos = {}
     cols = st.columns(2)
-    for i, nome in enumerate(st.session_state.participantes):
+    for i, nome in enumerate(participantes_env):
         with cols[i % 2]:
             valores_gastos[nome] = st.text_input(
                 f"{nome} (R$):",
-                key=f"gasto_{nome}",
+                key=f"gasto_{nome}_{len(st.session_state.despesas)}",
                 placeholder="Ex: 25,50",
             )
 
     if st.button("Adicionar despesa"):
-        # Processar os valores
         despesa_atual = {}
         total = 0
-        for nome, valor_str in valores_gastos.items():
-            valor = converter_valor(valor_str)
+        for nome in participantes_env:
+            valor = converter_valor(valores_gastos.get(nome, "0"))
             if valor > 0:
                 despesa_atual[nome] = valor
                 total += valor
 
-        if total == 0:
+        if not participantes_env:
+            st.error("Selecione ao menos uma pessoa.")
+        elif total == 0:
             st.error("Adicione pelo menos um valor válido.")
         else:
-            st.session_state.despesas.append(despesa_atual)
-            st.success("Despesa adicionada com sucesso ✅")
+            st.session_state.despesas.append({"envolvidos": participantes_env, "valores": despesa_atual})
+            st.success(f"Despesa adicionada com sucesso! (Total R${total:.2f})")
 
 # ---------- LISTA DE DESPESAS ----------
 if st.session_state.despesas:
     st.subheader("💸 Despesas registradas")
     for i, d in enumerate(st.session_state.despesas):
-        detalhes = ", ".join([f"{p}: R${v:.2f}" for p, v in d.items()])
-        st.text(f"{i+1}. {detalhes}")
+        env = ", ".join(d["envolvidos"])
+        detalhes = ", ".join([f"{p}: R${v:.2f}" for p, v in d["valores"].items()])
+        st.text(f"{i+1}. [{env}] → {detalhes}")
 
 # ---------- RESULTADO ----------
 st.header("3️⃣ Resultado final 💰")
@@ -96,16 +104,20 @@ if st.button("Calcular resultado"):
     deve_gastar = {p: 0 for p in participantes}
     saldos = {p: 0 for p in participantes}
 
-    # Somatório de quanto cada um pagou
     for despesa in despesas:
-        total_despesa = sum(despesa.values())
-        envolvidos = list(despesa.keys())
-        valor_por_pessoa = total_despesa / len(participantes)
+        envolvidos = despesa["envolvidos"]
+        valores = despesa["valores"]
+        total_despesa = sum(valores.values())
 
-        for p in participantes:
-            deve_gastar[p] += valor_por_pessoa
-        for pagador, valor in despesa.items():
+        if not envolvidos:
+            continue
+
+        valor_por_pessoa = total_despesa / len(envolvidos)
+
+        for pagador, valor in valores.items():
             pagos[pagador] += valor
+        for p in envolvidos:
+            deve_gastar[p] += valor_por_pessoa
 
     for p in participantes:
         saldos[p] = pagos[p] - deve_gastar[p]
